@@ -8,10 +8,10 @@ The fundamental concept of Intel® XeTLA revolves around micro-kernels, which ar
 
 There are two groups of API to imeplement GEMM, brgemm (mirco-kernels) in group level and GEMM in kernel level for developers. 
 
-| API level | API name                       |
-| :-------- | :----------------------------- |
-| kernel    | `gpu::xetla::kernel::gemm_t`   |
-| group     | `gpu::xetla::group::brgemm_t`  |
+| API level | API name                             |
+| :-------- | :------------------------------------|
+| kernel    | `gpu::xetla::kernel::gemm_universal` |
+| group     | `gpu::xetla::group::gemm`            |
 
 ## The Key Things for Better Performance
 Intel® XeTLA provides the basic building block of GEMM unit; however, it still needs to implement the kernel carefully for the better perforamnce in both algorithm and hardware level.
