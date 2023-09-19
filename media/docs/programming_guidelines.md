@@ -19,9 +19,10 @@ There are there groups of APIs for user, each serving with different purposes.
 
 
 ## Kernel-level API 
-The kernel level API works on the whole GPU so the input and output are all based on global memory. The local memory usage and synconization is hidded inside workgroup. And the developer can not aware it.
-Take `gemm_universal` for example, the developer need to select dispatch policy (or using default), GEMM building block and post precessing operators. 
-The API example is shown as below:
+The `kernel-level API` operates at the GPU-wide scale, where both input and output rely on global memory. Local shared memory and synchronization are handled internally within workgroups, transparent to the developer. Consequently, developers remain unaware of these low-level details.
+
+For instance, consider the `gemm_universal` function. When using this API, developers are required to make choices regarding dispatch policies, select the appropriate GEMM building block, and specify any post-processing operators. The API example is outlined below:
+
 ```c++
 using gemm_op_t = xetla::kernel::gemm_universal_t<dispatch_policy, gemm_t, epilogue_t>;
 ```
@@ -41,7 +42,7 @@ auto gpu_event = queue.submit([&](handler &cgh) {
 For a runnable code example, you can refer to the code in the [01_basic_gemm](/examples/01_basic_gemm), which also includes explanations of the idea behind the implementation.
 
 ## Group-level API 
-The use of a group-level API in parallel computing provides several notable advantages. Firstly, it offers developers greater flexibility in constructing custom kernels tailored to their specific needs. This flexibility extends to workload distribution across GPU workgroups. In this context, the allocation of workgroups is based on the output matrix C, with each workgroup handling a distinct sub-matrix sized wg_tile_m * wg_tile_n. Within each workgroup, intricate computations related to the 'K' dimension are encapsulated within the GEMM building block, sparing developers from delving into these details at the group level
+The use of a `group-level API` in parallel computing provides several notable advantages. Firstly, it offers developers greater flexibility in constructing custom kernels tailored to their specific needs. This flexibility extends to workload distribution across GPU workgroups. In this context, the allocation of workgroups is based on the output matrix C, with each workgroup handling a distinct sub-matrix sized `wg_tile_m` * `wg_tile_n`. Within each workgroup, intricate computations related to the `K` dimension are encapsulated within the GEMM building block, sparing developers from delving into these details at the group level
 
 ![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
 
