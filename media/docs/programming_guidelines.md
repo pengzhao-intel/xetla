@@ -18,9 +18,12 @@ There are there groups of APIs for user, each serving with different purposes.
 | subgroup  | `gpu::xetla::subgroup::tile_prefetch`    |  
 
 
-## Mapping GEMM into GPU
-
+## Mapping workload into GPU
+In this section, we use GEMM as example to show how to divide the workload and how it map into workgroup, subgorup and hardware execution unit.
 ![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
+
+
+
 ## The Key Things for Better Performance
 Intel® XeTLA provides the basic building block of GEMM unit; however, it still needs to implement the kernel carefully for the better perforamnce in both algorithm and hardware level.
 1. Number of work-group / sub-group
