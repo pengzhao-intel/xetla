@@ -4,14 +4,18 @@
 
 # Programming Guidelines
 
-The fundamental concept of Intel® XeTLA revolves around micro-kernels, which are used to compute submatrices (also known as tiles) of output, using advanced GPU instructions like 2D block load/store and DPAS. This approach allows developers to solely focus on their algorithm design, including task division, fusion, and memory heirarchial usage, while offloading the complexity of GEMM computation into template-based building blocks.
+The fundamental concept of Intel® XeTLA is around `building blocks`, which are used to construct the whole and bigger kernels. The `building blocks` is a piece of high performent device code and it leverages the advanced GPU instructions like 2D block load/store and DPAS. XeTLA allows developers to solely focus on their algorithm design, including task division, fusion, and memory heirarchial usage, while offloading the complexity of computation and data movement into basic `building blocks`.
 
-There are two groups of API to imeplement GEMM, brgemm (mirco-kernels) in group level and GEMM in kernel level for developers. 
+There are there groups of APIs for user, regarding with different purposes. 
+- [kernel](https://github.com/pengzhao-intel/xetla/tree/main/include/kernel) level API is for the most easy of use purpose by combinationg different `group` level APIs. For example, `gemm_universal` is specific for GEMM where the user only need to set the input shape of A, B, C and other several basic params rather than understanding more computation details. Definitely, the developer can oragnize their own GEMM by `group` level API and they may get better performance for their specific shapes.
+- [group](https://github.com/pengzhao-intel/xetla/tree/main/include/group) level API is the major component to construct your own kernels. The group functions will be mapped into `workgroup` and be ran in the DSS in GPU. Thus, it's very important to understand how to divide the workload into small pieces and assign it to the workgrou. One of major perfomrance issue will be too less workgroups to fill in all DSS in GPU.
+- [subgroup](https://github.com/pengzhao-intel/xetla/tree/main/include/subgroup) is the next lower level of group API. In most of time, it is sufficent to create high performance kernels by group level API. However, if the develper want to control the detail of the algorithm, like when to do data prefetch or manage the data reuse in a workgroup, etc. the subgroup level APi provides most flexiblity.
 
-| API level | API name                             |
-| :-------- | :------------------------------------|
-| kernel    | `gpu::xetla::kernel::gemm_universal` |
-| group     | `gpu::xetla::group::gemm`            |
+| API level | Example API name                         |
+| :-------- | :----------------------------------------|
+| kernel    | `gpu::xetla::kernel::gemm_universal`     |
+| group     | `gpu::xetla::group::gemm`                |
+| subgroup  | `gpu::xetla::subgroup::tile_prefetch`    |  
 
 ## The Key Things for Better Performance
 Intel® XeTLA provides the basic building block of GEMM unit; however, it still needs to implement the kernel carefully for the better perforamnce in both algorithm and hardware level.
