@@ -20,11 +20,12 @@ There are there groups of APIs for user, each serving with different purposes.
 
 ## Kernel-level API 
 The kernel level API works on the whole GPU so the input and output are all based on global memory. The local memory usage and synconization is hidded inside workgroup. And the developer can not aware it.
-Take `gemm_universal` for example, the developer need to select dispatch policy (or using default), GEMM building block and post precessing operators. The API example looks like below:
+Take `gemm_universal` for example, the developer need to select dispatch policy (or using default), GEMM building block and post precessing operators. 
+The API example is shown as below:
 ```c++
 using gemm_op_t = xetla::kernel::gemm_universal_t<dispatch_policy, gemm_t, epilogue_t>;
 ```
-And then call these API inside the GPU kernel
+And then this GEMM can be executed inside `parallel_for`.
 ```c++
 auto gpu_event = queue.submit([&](handler &cgh) {
     // GPU kernel
@@ -39,45 +40,31 @@ auto gpu_event = queue.submit([&](handler &cgh) {
 ```
 For a runnable code example, you can refer to the code in the [01_basic_gemm](/examples/01_basic_gemm), which also includes explanations of the idea behind the implementation.
 
-### Task Mapping 
-Before launching the GPU kernel, it should be decided how to map entire GEMM computation into GPU by work-group and sub-group. To efficient utilize the GPU resource, it's improtant to consider factors such as the shape of the operation, data type, and hardware specifications of the GPU. 
-```c++
-constexpr uint32_t wg_tile_m = 256;
-constexpr uint32_t wg_tile_n = 256;
-constexpr uint32_t sg_tile_m = 32;
-constexpr uint32_t sg_tile_n = 64;
-```
-In this example, the input for GEMM is a matrix with dimensions (4096, 4096), and the output matrix has the same dimensions. With the specified work-group and sub-group sizes, we can map the GEMM operation into (16, 16) work-groups, where each work-group has (8, 4) sub-groups respectively. Each sub-group will be executed by a hardware thread. And this logic is defined as below code example, these number is used for `nd_range`.
+## Group-level API 
+The use of a group-level API in parallel computing provides several notable advantages. Firstly, it offers developers greater flexibility in constructing custom kernels tailored to their specific needs. This flexibility extends to workload distribution across GPU workgroups. In this context, the allocation of workgroups is based on the output matrix C, with each workgroup handling a distinct sub-matrix sized wg_tile_m * wg_tile_n. Within each workgroup, intricate computations related to the 'K' dimension are encapsulated within the GEMM building block, sparing developers from delving into these details at the group level
+
+![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
+
+Moreover, a key benefit of the group-level API is the empowerment it grants developers over accumulator variables (`matAcc` in below example). This control enables developers to implement more sophisticated and innovative operations, seamlessly fused with the GEMM computation. This level of customization proves invaluable when striving for optimized performance tailored to specific computational tasks, such as example in [02_basic_gemm](/examples/02_basic_gemm)
 
 ```c++
-//Workload mapping, linear mapping will be used in the code
-uint32_t group_range_m = (matrix_m + wg_tile_m - 1) / wg_tile_m;
-uint32_t group_range_n = (matrix_n + wg_tile_n - 1) / wg_tile_n;
+gemm_t::matAcc_t matAcc;
+matAcc.init(0);
 
-//Each subgroup will be executed in one hardware thread
-//Calculate how many threads in a work-group
-uint32_t local_range_m = (wg_tile_m + sg_tile_m - 1) / sg_tile_m;
-uint32_t local_range_n = (wg_tile_n + sg_tile_n - 1) / sg_tile_n;
+gemm_t::arguments_t gemm_args(md_a, md_b, inner_loop_count);
 
-//nd_range and work-group shape
-cl::sycl::range<3> group_range {1, group_range_m, group_range_n};
-cl::sycl::range<3> local_range {1, local_range_m, local_range_n};
+// the results is in the matAcc rather than real output C
+gemm_t::work_group_t g(ei.get_local_linear_id());
+gemm(g, matAcc, gemm_args);
 
-cl::sycl::nd_range<3> nd_range(group_range * local_range, local_range);
+// any customized operation here based on matACC
 
-//Recommended that you use the helper function to caculate nd_range, it is convenient.
-cl::sycl::nd_range<3> get_nd_range(uint32_t matrix_m, uint32_t matrix_n);
-```
-Now, the GPU kernel is starting from `parallel_for` with specific work-groups and sub-groups.
-
-```c++
-cl::sycl::nd_range<3> nd_range = gemm_op_t::get_nd_range(matrix_m, matrix_n);
-cgh.parallel_for(nd_range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
-    .....
-}
+// write the results from matACC to real output C
+epilogue_t epilogue;
+epilogue(g, matAcc, md_c);
 ```
 
-### Construct Micro-kernel
+### Subgroup-level API
 The micro-kernel is a crucial component of GEMM, and correctly setting it is essential to its implementation. 
 To help developers customize their micro-kernels, the `brgemm_select_t` class provides a simple interface as below.
 In this template, the memory layout, computation engine and work-group/sub-gourp shape will be provided and the developer can
@@ -174,9 +161,8 @@ xetla_exec_item<3> ei(item);
 gemm_op(ei, arg);
 ```
 
-## Mapping workload into GPU
-In this section, we use GEMM as example to show how to divide the workload and how it map into workgroup, subgorup and hardware execution unit.
-![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
+
+
 
 
 
