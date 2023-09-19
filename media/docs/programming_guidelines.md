@@ -7,7 +7,7 @@
 The central idea behind Intel® XeTLA revolves around the concept of `building blocks`, which used to create larger and more complex kernels. These building blocks consist of highly performant device code that harnesses advanced GPU instructions such as 2D block load/store and DPAS. Furthermore, it means the most intricacies of computation and data is offloaded into these essential building blocks. XeTLA empowers developers to concentrate exclusively on their algorithm design, encompassing task allocation, fusion, and memory hierarchy utilization. 
 
 There are there groups of APIs for user, each serving with different purposes. 
-- [kernel-level APIs](https://github.com/pengzhao-intel/xetla/tree/main/include/kernel) is designed for the easiest user experience by combining various `group-level APIs`. For instance, `gemm_universal` is specifically tailored for GEMM (General Matrix Multiply), where users only need to set the input shapes of A, B, C, and a few basic parameters, without delving into the intricacies of computation. Of course, developers have the option to customize their own GEMM implementations using the `group-level APIs`, potentially achieving better performance for their specific input shapes.
+- [kernel-level APIs](https://github.com/pengzhao-intel/xetla/tree/main/include/kernel) is designed for the easiest user experience by combining various `group-level APIs`. For instance, `gemm_universal` is specifically tailored for GEMM (General Matrix Multiply), where users only need to set the input shapes of A, B, C, a few basic parameters and post functions,  without delving into the intricacies of computation. Of course, developers have the option to customize their own GEMM implementations using the `group-level APIs`, potentially achieving better performance for their specific input shapes.
 - [group-level APIs](https://github.com/pengzhao-intel/xetla/tree/main/include/group) serves as the primary component for building your own kernels. These group functions are mapped to `workgroup` and executed in the Dual Subslice (DSS) on the GPU. Therefore, it's crucial to understand how to divide the workload into smaller pieces and allocate it to the workgroups. One major performance concern is having too few workgroups to fully utilize all available DSS resources on the GPU.
 - [subgroup](https://github.com/pengzhao-intel/xetla/tree/main/include/subgroup) represents the next lower level of group APIs. In most cases, creating high-performance kernels can be achieved using the `group-level APIs`. However, for developers who seek finer control over algorithm details, such as when to perform data prefetch or manage data reuse within a workgroup, the `subgroup-level APIs` offers the utmost flexibility.
 
@@ -18,28 +18,25 @@ There are there groups of APIs for user, each serving with different purposes.
 | subgroup  | `gpu::xetla::subgroup::tile_prefetch`    |  
 
 
-## Mapping workload into GPU
-In this section, we use GEMM as example to show how to divide the workload and how it map into workgroup, subgorup and hardware execution unit.
-![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
-
-
-
-## The Key Things for Better Performance
-Intel® XeTLA provides the basic building block of GEMM unit; however, it still needs to implement the kernel carefully for the better perforamnce in both algorithm and hardware level.
-1. Number of work-group / sub-group
-2. K slicing algorithm
-3. Reuse register for post operations
-4. Data sharing through shared local memory
-5. Reduction
-
-## How To Implement A GEMM With Building Block 
-
-To create a customized GEMM kernel, the following steps should be considered:
-
-1. Define a mirco-kernel, `brgemm`, including the work-group and sub-group division, which is the core of your GEMM
-2. Define `epilogue` that specifies what you want to fuse in register level after GEMM computation, such as relu,  and how to write out GEMM results
-2. Combine micro-kernel with epilogue together to create a functinal `gemm` implementation
-
+## Kernel-level API 
+The kernel level API works on the whole GPU so the input and output are all based on global memory. The local memory usage and synconization is hidded inside workgroup. And the developer can not aware it.
+Take `gemm_universal` for example, the developer need to select dispatch policy (or using default), GEMM building block and post precessing operators. The API example looks like below:
+```c++
+using gemm_op_t = xetla::kernel::gemm_universal_t<dispatch_policy, gemm_t, epilogue_t>;
+```
+And then call these API inside the GPU kernel
+```c++
+auto gpu_event = queue.submit([&](handler &cgh) {
+    // GPU kernel
+    cgh.parallel_for(nd_range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
+        xetla_exec_item<3> ei(item);
+        // allocate slm and nbarrier resource
+        slm_barrier_init<gemm_op_t>();
+        gemm_op_t gemm_op;
+        gemm_op(ei, gemm_arg);
+    });
+});
+```
 For a runnable code example, you can refer to the code in the [01_basic_gemm](/examples/01_basic_gemm), which also includes explanations of the idea behind the implementation.
 
 ### Task Mapping 
@@ -176,6 +173,21 @@ gemm_op_t gemm_op;
 xetla_exec_item<3> ei(item);
 gemm_op(ei, arg);
 ```
+
+## Mapping workload into GPU
+In this section, we use GEMM as example to show how to divide the workload and how it map into workgroup, subgorup and hardware execution unit.
+![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
+
+
+
+## The Key Things for Better Performance
+Intel® XeTLA provides the basic building block of GEMM unit; however, it still needs to implement the kernel carefully for the better perforamnce in both algorithm and hardware level.
+1. Number of work-group / sub-group
+2. K slicing algorithm
+3. Reuse register for post operations
+4. Data sharing through shared local memory
+5. Reduction
+
 ## Copyright
 Copyright (c) 2022-2023 Intel Corporation Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
 
