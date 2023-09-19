@@ -2,7 +2,7 @@
 
 ![ALT](/media/docs/workflow.png "Step by step GEMM decomposition")
 
-# Programming Guidelines
+# Basic Concepts
 
 The central idea behind Intel® XeTLA revolves around the concept of `building blocks`, which used to create larger and more complex kernels. These building blocks consist of highly performant device code that harnesses advanced GPU instructions such as 2D block load/store and DPAS. Furthermore, it means the most intricacies of computation and data is offloaded into these essential building blocks. XeTLA empowers developers to concentrate exclusively on their algorithm design, encompassing task allocation, fusion, and memory hierarchy utilization. 
 
@@ -17,6 +17,10 @@ There are there groups of APIs for user, each serving with different purposes.
 | group     | `gpu::xetla::group::gemm`                |
 | subgroup  | `gpu::xetla::subgroup::tile_prefetch`    |  
 
+
+## Mapping GEMM into GPU
+
+![ALT](/media/docs/code_map.jpg "Code Example to show workload mapping")
 ## The Key Things for Better Performance
 Intel® XeTLA provides the basic building block of GEMM unit; however, it still needs to implement the kernel carefully for the better perforamnce in both algorithm and hardware level.
 1. Number of work-group / sub-group
