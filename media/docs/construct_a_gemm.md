@@ -1,8 +1,10 @@
+In this document, we will illustrate how to construct a GEMM based kernel, including post operators. XeTLA provides different level of interfaces so we will show how to do GEMM from both kernel and group level API. Meanwhile, we will aslo show how to apply advance algorihtm inside GEMM kernel such as `splitK` and `streamK`.
+
 ## How To Implement A GEMM With Building Block 
 
 To create a customized GEMM kernel, the following steps should be considered:
 
-1. Define a mirco-kernel, `brgemm`, including the work-group and sub-group division, which is the core of your GEMM
+1. Select a GEMM building block, including the work-group and sub-group division, which is the core of your GEMM
 2. Define `epilogue` that specifies what you want to fuse in register level after GEMM computation, such as relu,  and how to write out GEMM results
 2. Combine micro-kernel with epilogue together to create a functinal `gemm` implementation
 
