@@ -1,5 +1,7 @@
 In this document, we will illustrate how to construct a GEMM based kernel, including post operators. XeTLA provides different level of interfaces so we will show how to do GEMM from both kernel and group level API. Meanwhile, we will aslo show how to apply advance algorihtm inside GEMM kernel such as `splitK` and `streamK`.
 
+![ALT](/media/docs/dom.jpg "GEMM decomposition by workgroup and subgroup")
+
 ## How To Implement A GEMM With Building Block 
 
 To create a customized GEMM kernel, the following steps should be considered:
