@@ -1,3 +1,5 @@
+# Construct High Performance GEMM by Group-level API
+
 In this document, we will illustrate how to construct a GEMM with goup API, meaning workgroup level, and will explain the key performance considerations. Meanwhile, we will aslo show how to apply advance algorihtms such as `splitK` and `streamK` and the relationship between GEMM shape with other parameters.
 
 ![ALT](/media/docs/dom.jpg "GEMM decomposition by workgroup and subgroup")
