@@ -1,6 +1,6 @@
 # Construct High Performance GEMM by Group-level API
 
-In this document, we will illustrate how to construct a GEMM with goup API, meaning workgroup level, and will explain the key performance considerations. Meanwhile, we will aslo show how to apply advance algorihtms such as `splitK` and `streamK` and the relationship between GEMM shape with other parameters.
+In this document, we will illustrate how to construct a GEMM using the group API, specifically at the workgroup level, and explain the essential performance considerations. Additionally, we will explore the relationship between the GEMM shape and other relevant parameters as well as how to apply advanced algorithms such as `splitK` and `streamK`.
 
 As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of output C, and then the sub-matrix will be continously divided into several tiles by `sg_tile_n` and `sg_tile_m`. These tile APIs are called `subgroup-level`. Finally, these tile operator will be mapped into the real hardware instructions, such as a `tile_load` .
 
@@ -8,11 +8,12 @@ As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of o
 
 ## Basic Components  
 
-1. Select a GEMM building block, including the work-group and sub-group division, which is the core of your GEMM
-2. Define `epilogue` that specifies what you want to fuse in register level after GEMM computation, such as relu,  and how to write out GEMM results
-2. Combine micro-kernel with epilogue together to create a functinal `gemm` implementation
+1. Select a `GEMM building block`, considering the division of work-group and sub-group
+2. Decide if `splitK` or `steamK` are needed in specific shape 
+3. Define `epilogue` that specifies what you want to fuse after the GEMM computation based on accumulator
+4. Instantiate a `gemm` implementation by the selections from 1)-3).
 
-For a runnable code example, you can refer to the code in the [01_basic_gemm](/examples/01_basic_gemm), which also includes explanations of the idea behind the implementation.
+For a runnable code example, you can refer to the code in the [02_basic_gemm](/examples/02_basic_gemm).
 
 ### Task Mapping 
 Before launching the GPU kernel, it should be decided how to map entire GEMM computation into GPU by work-group and sub-group. To efficient utilize the GPU resource, it's improtant to consider factors such as the shape of the operation, data type, and hardware specifications of the GPU. 
