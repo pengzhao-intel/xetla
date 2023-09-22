@@ -2,6 +2,8 @@
 
 In this document, we will illustrate how to construct a GEMM with goup API, meaning workgroup level, and will explain the key performance considerations. Meanwhile, we will aslo show how to apply advance algorihtms such as `splitK` and `streamK` and the relationship between GEMM shape with other parameters.
 
+As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of output C, and then the sub-matrix will be continously divided into several tiles by `sg_tile_n` and `sg_tile_m`. These tile APIs are called `subgroup-level`. Finally, these tile operator will be mapped into the real hardware instructions, such as a `tile_load` .
+
 ![ALT](/media/docs/dom.jpg "GEMM decomposition by workgroup and subgroup")
 
 ## Basic Components  
