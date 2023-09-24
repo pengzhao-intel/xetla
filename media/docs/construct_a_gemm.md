@@ -26,14 +26,7 @@ constexpr uint32_t sg_tile_n = 64;
 In this example, the input for GEMM is a matrix with dimensions (4096, 4096), and the output matrix has the same dimensions. With the specified work-group and sub-group sizes, we can map the GEMM operation into (16, 16) work-groups, where each work-group has (8, 4) sub-groups respectively. Each sub-group will be executed by a hardware thread.  However, think about if the input is (32, 1024), the current workgorup and subgroup size will be too large to create enough workgroups so that we need to reset the size of workgroup and subgroup. 
 
 ### splitK and streamK
-It's a very common situation in AI workload where the matrix is a rectangle which means the M and N dimension is smaller but the K dimension is huge. For example, the M，N, K of a workload is (256, 256, 8192) so the ouput shape of C is (256,256). If we still use workgroup shape of (256,256), there is only one workgroup which is far away from enough. Even we use (64,64) workgroup size, there are still only 16 workgroups in GPU. Further decrese the size of workgroup will lead other problems as well, such as the bad memory locality, hard to hide the latency, etc.
-
-![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
-
-
-
-And this logic is defined as below code example, these number is used for `nd_range`.
-
+It's a very common situation in AI workload where the matrix is a rectangle which means the M and N dimension is smaller but the K dimension is huge. For example, the M，N, K of a workload is (256, 256, 8192) so the ouput shape of C is (256,256). If we still use workgroup shape of (256,256), there is only one workgroup which is far away from enough. Even we use (64,64) workgroup size, there are still only 16 workgroups in GPU. Further decrese the size of workgroup will lead other problems as well, such as the bad memory locality, hard to hide the latency, etc. The workload exmaple code is demonstrated as below:
 ```c++
 //Workload mapping, linear mapping will be used in the code
 uint32_t group_range_m = (matrix_m + wg_tile_m - 1) / wg_tile_m;
@@ -53,6 +46,14 @@ cl::sycl::nd_range<3> nd_range(group_range * local_range, local_range);
 //Recommended that you use the helper function to caculate nd_range, it is convenient.
 cl::sycl::nd_range<3> get_nd_range(uint32_t matrix_m, uint32_t matrix_n);
 ```
+In this algorithm, the number of workgroup is only decided by workgroup tile size and it will be problematic if the output shape is not big enough. On the other hand, the K is huge so we can split in the K dimension to create more workgroups as well. As the above code the first parameters of `group_range` is only 1. If we split to 4 in K dimension, the total number of workgroup is 4 folds as below picture shown. This method is called `splitK`.  
+
+![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
+
+
+
+
+
 Now, the GPU kernel is starting from `parallel_for` with specific work-groups and sub-groups.
 
 ```c++
