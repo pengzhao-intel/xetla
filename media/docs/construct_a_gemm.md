@@ -51,6 +51,15 @@ In this algorithm, the number of workgroup is only decided by workgroup tile siz
 ![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
 
 
+To enable splitK algorith, we need to set a special dispatch policy, 
+```c++
+ using dispatch_policy
+            = gpu::xetla::kernel::dispatch_policy_kslicing<num_global_splitk,
+                    num_local_splitk, gpu_arch::Xe>;
+```
+
+
+
 
 
 
