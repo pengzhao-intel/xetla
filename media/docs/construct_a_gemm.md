@@ -46,30 +46,18 @@ cl::sycl::nd_range<3> nd_range(group_range * local_range, local_range);
 //Recommended that you use the helper function to caculate nd_range, it is convenient.
 cl::sycl::nd_range<3> get_nd_range(uint32_t matrix_m, uint32_t matrix_n);
 ```
-In this algorithm, the number of workgroup is only decided by workgroup tile size and it will be problematic if the output shape is not big enough. On the other hand, the K is huge so we can split in the K dimension to create more workgroups as well. As the above code the first parameters of `group_range` is only 1. If we split to 4 in K dimension, the total number of workgroup is 4 folds as below picture shown. This method is called `splitK`.  
+In this algorithm, the number of workgroup is only decided by workgroup tile size and it will be problematic if the output shape is not big enough. On the other hand, the K is huge so we can split in the K dimension to create more workgroups as well. As the above code the first parameters of `group_range` is only 1. If we split to 4 in K dimension, the total number of workgroup is 4 folds as below picture shown. This method is called `splitK`.  In this picture, the split K happened in workgroup level. It means each workgroup only calculate partical of final GEMM results and finally we have to add them together. As we know there is no explicit sychnozation algorithm between workgroup level and we have to use `atomci_add` to accumulate 4 resutls together, which is shown as `Cross-Workgroup Reduction` in the picture. Meanwhile, since the `atomic-add` only supports float add, the limitaiton of workgroup-level splitK is the output datatype MUST be float rather than float16 or bfloat16.
 
 ![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
 
-To enable splitK algorith in kernel level API, we can set two parameters in dispatch policy. 
+Alternatively, the subgroup-level splitK is also available in gemm_universal API which can accumulate the result during shared local memory inside a workgroup so the half percesion data type is still supported.
+
+![ALT](/media/docs/subgroup_splitK.jpg "split K in subgroup level")
+
+To enable splitK algorith in kernel level API, we can set two parameters in dispatch policy. Definately, you can set both value to large than 1 for mixing workgroup and subgroup level split K together. 
 ```c++
  using dispatch_policy
             = gpu::xetla::kernel::dispatch_policy_kslicing<num_global_splitk, num_local_splitk, gpu_arch::Xe>;
-```
-![ALT](/media/docs/subgroup_splitK.jpg "split K in subgroup level")
-
-
-
-
-
-
-
-Now, the GPU kernel is starting from `parallel_for` with specific work-groups and sub-groups.
-
-```c++
-cl::sycl::nd_range<3> nd_range = gemm_op_t::get_nd_range(matrix_m, matrix_n);
-cgh.parallel_for(nd_range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
-    .....
-}
 ```
 
 ### Construct Micro-kernel
