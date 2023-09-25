@@ -50,19 +50,19 @@ In this algorithm, the number of workgroup is only decided by workgroup tile siz
 
 ![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
 
-Alternatively, the subgroup-level splitK is also available in gemm_universal API which can accumulate the result during shared local memory inside a workgroup so the half percesion data type is still supported.
+Alternatively, the subgroup-level splitK is also available i which can accumulate the result during shared local memory inside a workgroup so the half percesion data type is still supported.
 
 ![ALT](/media/docs/subgroup_splitK.jpg "split K in subgroup level")
 
-To enable splitK algorith in kernel level API, we can set two parameters in dispatch policy. Definately, you can set both value to large than 1 for mixing workgroup and subgroup level split K together. 
+For kernel level API, we can set two parameters in dispatch policy of `gemm_universal` API. Definitely, you can set both value to large than 1 for mixing workgroup and subgroup level split K together. 
 ```c++
  using dispatch_policy
             = gpu::xetla::kernel::dispatch_policy_kslicing<num_global_splitk, num_local_splitk, gpu_arch::Xe>;
 ```
+For group level API, the developer can leverage `group::cooperative_reduce_t` to add the final results by themselves.
 
-### Construct Micro-kernel
-The micro-kernel is a crucial component of GEMM, and correctly setting it is essential to its implementation. 
-To help developers customize their micro-kernels, the `brgemm_select_t` class provides a simple interface as below.
+### Configuraiton for GEMM building block
+The building block is a crucial component of GEMM, the `brgemm_select_t` class provides a simple interface as below.
 In this template, the memory layout, computation engine and work-group/sub-gourp shape will be provided and the developer can
 decide the location of input and output matrix which is either from global or shared local memory.
 
