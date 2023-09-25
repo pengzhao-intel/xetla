@@ -1,6 +1,6 @@
 # Construct High Performance GEMM by Group-level API
 
-In this document, we will illustrate how to construct a GEMM using the group API, specifically at the workgroup level, and explain the essential performance considerations. Additionally, we will explore the relationship between the GEMM shape and other relevant parameters as well as how to apply advanced algorithms such as `splitK` and `streamK`.
+In this document, we will illustrate how to construct a GEMM using the XeTLA API, including kernel and workgroup level. And, we will explore the relationship between the GEMM shape and other relevant parameters as well as when the `splitK` and `streamK` algorithm is needed.
 
 As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of output C, and then the sub-matrix will be continously divided into multiple tiles of `sg_tile_n` by `sg_tile_m`. These tiles will be assigned to subgroup. Finally, these tile operator will be mapped into the real hardware instructions, such as a `tile_load` and `mma`.
 
@@ -9,7 +9,7 @@ As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of o
 ## Basic Components  
 
 1. Select a `GEMM building block`, considering the division of work-group and sub-group
-2. Decide if `splitK` or `steamK` are needed in specific shape 
+2. Decide if `splitK` or `steamK` is needed in specific shape 
 3. Define `epilogue` that specifies what you want to fuse after the GEMM computation based on accumulator
 4. Instantiate a `gemm` implementation by the selections from 1)-3).
 
@@ -26,7 +26,7 @@ constexpr uint32_t sg_tile_n = 64;
 In this example, the input for GEMM is a matrix with dimensions (4096, 4096), and the output matrix has the same dimensions. With the specified work-group and sub-group sizes, we can map the GEMM operation into (16, 16) work-groups, where each work-group has (8, 4) sub-groups respectively. Each sub-group will be executed by a hardware thread.  However, think about if the input is (32, 1024), the current workgorup and subgroup size will be too large to create enough workgroups so that we need to reset the size of workgroup and subgroup. 
 
 ### splitK and streamK
-It's a very common situation in AI workload where the matrix is a rectangle which means the M and N dimension is smaller but the K dimension is huge. For example, the M，N, K of a workload is (256, 256, 8192) so the ouput shape of C is (256,256). If we still use workgroup shape of (256,256), there is only one workgroup which is far away from enough. Even we use (64,64) workgroup size, there are still only 16 workgroups in GPU. Further decrese the size of workgroup will lead other problems as well, such as the bad memory locality, hard to hide the latency, etc. The workload exmaple code is demonstrated as below:
+It's a very common situation in AI workload where the matrix is a rectangle which means the M and N dimension is smaller but the K dimension is huge. For example, the M，N, K of a workload is (256, 256, 8192) so the ouput shape of C is (256,256). If we still use workgroup shape of (256,256), there is only one workgroup which is far away from enough. Even we use (64,64) workgroup size, there are still only 16 workgroups in GPU. Further decrese the size of workgroup will lead other problems as well, such as the bad memory locality, hard to hide the latency, etc. The exmaple code is demonstrated as below:
 ```c++
 //Workload mapping, linear mapping will be used in the code
 uint32_t group_range_m = (matrix_m + wg_tile_m - 1) / wg_tile_m;
@@ -50,13 +50,13 @@ In this algorithm, the number of workgroup is only decided by workgroup tile siz
 
 ![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
 
-
-To enable splitK algorith, we need to set a special dispatch policy, 
+To enable splitK algorith in kernel level API, we can set two parameters in dispatch policy. 
 ```c++
  using dispatch_policy
-            = gpu::xetla::kernel::dispatch_policy_kslicing<num_global_splitk,
-                    num_local_splitk, gpu_arch::Xe>;
+            = gpu::xetla::kernel::dispatch_policy_kslicing<num_global_splitk, num_local_splitk, gpu_arch::Xe>;
 ```
+![ALT](/media/docs/subgroup_splitK.jpg "split K in subgroup level")
+
 
 
 
