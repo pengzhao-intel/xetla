@@ -62,7 +62,7 @@ For kernel level API, we can set two parameters in dispatch policy of `gemm_univ
 For group level API, the developer can leverage `group::cooperative_reduce_t` to add the final results by themselves.
 
 ### Configuraiton for GEMM building block
-The building block is a crucial component of GEMM, the `brgemm_select_t` class provides a simple interface as below.
+The building block is a crucial component of GEMM, the `gemm_select_t` class provides a simple interface as below.
 In this template, the memory layout, computation engine and work-group/sub-gourp shape will be provided and the developer can
 decide the location of input and output matrix which is either from global or shared local memory.
 
@@ -80,7 +80,7 @@ template <typename dtype_a,
           int k_stride,
           mma_engine engine,
           gpu_arch arch>
-class brgemm_selector_t {};
+class gemm_selector_t {};
 ```
 
 - `dtype_a` and `dtype_b` are the memory data type of matrix A and B
@@ -120,7 +120,7 @@ using tile_op_t = chained_tile_op_t<
                   >;
 ```
 
-### Construct GEMM 
+### GEMM Instantiate 
 
 After configuration of BRGEMM and epilogue, it's simple to build entire GEMM with:
 - assigning tasks to each group, setting working boundaries and starting position accordingly.
