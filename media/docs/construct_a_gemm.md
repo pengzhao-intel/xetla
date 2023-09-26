@@ -1,6 +1,6 @@
-# Construct High Performance GEMM by Group-level API
+# Construct High Performance GEMM by XeTLA API
 
-In this document, we will illustrate how to construct a GEMM using the XeTLA API, including kernel and workgroup level. And, we will explore the relationship between the GEMM shape and other relevant parameters as well as when the `splitK` and `streamK` algorithm is needed.
+In this document, we will illustrate how to construct a GEMM using the XeTLA API, both in kernel and workgroup level. And, we will explore the relationship between the GEMM shape and other relevant parameters as well as when the `splitK` or `streamK` algorithm is needed.
 
 As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of output C, and then the sub-matrix will be continously divided into multiple tiles of `sg_tile_n` by `sg_tile_m`. These tiles will be assigned to subgroup. Finally, these tile operator will be mapped into the real hardware instructions, such as a `tile_load` and `mma`.
 
@@ -25,7 +25,7 @@ constexpr uint32_t sg_tile_n = 64;
 ```
 In this example, the input for GEMM is a matrix with dimensions (4096, 4096), and the output matrix has the same dimensions. With the specified work-group and sub-group sizes, we can map the GEMM operation into (16, 16) work-groups, where each work-group has (8, 4) sub-groups respectively. Each sub-group will be executed by a hardware thread.  However, think about if the input is (32, 1024), the current workgorup and subgroup size will be too large to create enough workgroups so that we need to reset the size of workgroup and subgroup. 
 
-### splitK and streamK
+### SplitK
 It's a very common situation in AI workload where the matrix is a rectangle which means the M and N dimension is smaller but the K dimension is huge. For example, the M，N, K of a workload is (256, 256, 8192) so the ouput shape of C is (256,256). If we still use workgroup shape of (256,256), there is only one workgroup which is far away from enough. Even we use (64,64) workgroup size, there are still only 16 workgroups in GPU. Further decrese the size of workgroup will lead other problems as well, such as the bad memory locality, hard to hide the latency, etc. The exmaple code is demonstrated as below:
 ```c++
 //Workload mapping, linear mapping will be used in the code
@@ -62,25 +62,29 @@ For kernel level API, we can set two parameters in dispatch policy of `gemm_univ
 For group level API, the developer can leverage `group::cooperative_reduce_t` to add the final results by themselves.
 
 ### Configuraiton for GEMM building block
-The building block is a crucial component of GEMM, the `gemm_select_t` class provides a simple interface as below.
+The building block is a crucial component of GEMM, the `gemm_selector_t` class provides a simple interface as below.
 In this template, the memory layout, computation engine and work-group/sub-gourp shape will be provided and the developer can
 decide the location of input and output matrix which is either from global or shared local memory.
 
 ```c++
-template <typename dtype_a,
-          typename dtype_b,
-          mem_layout mem_layout_a,
-          mem_layout mem_layout_b,
-          mem_space mem_space_a,
-          mem_space mem_space_b,
-          int alignment_a,
-          int alignment_b,
-          typename dtype_acc,
-          typename tile_shape,
-          int k_stride,
-          mma_engine engine,
-          gpu_arch arch>
-class gemm_selector_t {};
+// Mirco-kernel configuration
+    using gemm_t = typename xetla::group::gemm_selector_t<
+            data_type_a, // input datatype for A
+            data_type_b, // input datatype for B
+            mem_layout::row_major, // memory layout for A
+            mem_layout::row_major, // memory layout for B
+            mem_space::global, // memory reading from global mem for A
+            mem_space::global, // memory reading from global mem for B
+            8, // buffer alignment for A, in unit of element
+            8, // buffer alignment for B, in unit of element
+            data_type_acc, // accumulator data type for intermediate resutls
+            tile_shape, // computation tile shape
+            sg_tile_k, // elements in each iteration
+            mma_engine::xmx, // compute engine
+            gpu_arch::Xe, // GPU arch
+            stages, // number of prefetch pipe stage
+            sync_freq> // frequency of periodic sync, in unit of inner loop
+            ::gemm;
 ```
 
 - `dtype_a` and `dtype_b` are the memory data type of matrix A and B
@@ -98,15 +102,13 @@ class gemm_selector_t {};
 The fusion of post-operations, such as `bias add`, `relu`, `gelu`,  after GEMM computation can significantly reduce unnecessary memory transitions and greatly improve performance. In Intel® XeTLA, the `epilogue` is specifically designed to seamlessly integrate post-operations into the GEMM computation at the register level. Beside the fusion, the `epilogue` is also used to update the buffer `c` or data conversion and fusing with some post-processing ops, such as `bias add`, `relu`, `gelu`,.etc.
 
 ```c++
-template <typename epilogue_policy,
-          typename tile_shape,
-          typename mem_desc_c>
+  using epilogue_t = xetla::group::epilogue_t<
+            xetla::group::epilogue_policy_default<gpu_arch::Xe>, tile_shape,
+            mem_desc_t<data_type_c, mem_layout::row_major, mem_space::global>>;
 class epilogue_t {};
 ```
 
-- `epilogue_policy` tells the epilogue behavior, as well as the related configurations, such as `tile_op_t`, `update_method`, ...
-  - `tile_op_t` is the post-processing ops that can be fused together with `brgemm`. When there are multiple post-processing ops, Intel® XeTLA provides `chained_tile_op_t<tile_op_0, tile_op_1, ...>` to fuse all the tile ops first, then feed into `epilogue_t`.
-  - `update_method` is the method to update buffer `c`, can be either `result_overwrite` or `result_reduce_sum`.
+- `epilogue_policy_default` tells the epilogue behavior, as well as the related configurations, such as `tile_op_t`, `update_method`, ...
 - `tile_shape` is the problem size of each group and subgroup.
 - `mem_desc_c` is the description of buffer `c`, which includes `memory data type`, `memory space` and `memory layout`...
 
@@ -128,22 +130,12 @@ After configuration of BRGEMM and epilogue, it's simple to build entire GEMM wit
 - performing any synchronization in between that may be necessary
 - performing any necessary group remapping logic to maximize data locality
 
-As below interface, GEMM is constructd by `dispatch_policy`, `brgemm` and `epilogue`.
+As below interface, GEMM is constructd by `dispatch_policy`, `gemm` and `epilogue`.
 
 ```c++
-template <typename dispatch_policy,
-          typename brgemm_t,
-          typename epilogue_t>
-class gemm_t {};
-
-using gemm_op_t = gpu::xetla::kernel::gemm_t<
-                  gpu::xetla::kernel::dispatch_policy_default<gpu_arch::Xe>, brgemm_t,
-                  epilogue_t>;
+using gemm_op_t = xetla::kernel::gemm_universal_t<dispatch_policy, gemm_t,
+            epilogue_t>;
 ```
-
-- `dispatch_policy` is the kernel launch attribute, which includes the hardware architecture tag, group remapping information, and special parameters for task splitting, e.g., `l3_kslicing` can be used to split the group-level problem along the `K` dimension in order to get higher occupancy.
-- `brgemm_t` is the brgemm operation as describe above.
-- `epilogue_t` is the epilogue operation as describe above.
 
 Finally, the actual data will be passed using gemm_op_t::arguments_t, and all of these configurations will be instantiated during the compilation stage for the actual kernel.
 
