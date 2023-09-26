@@ -1,8 +1,8 @@
 # Construct High Performance GEMM by XeTLA API
 
-In this document, we will illustrate how to construct a GEMM using the XeTLA API, both in kernel and workgroup level. And, we will explore the relationship between the GEMM shape and other relevant parameters as well as when the `splitK` or `streamK` algorithm is needed.
+In this document, we will demonstrate how to construct a General Matrix Multiply (GEMM) operation using the XeTLA API, both at the kernel and workgroup levels. Additionally, we will explore the relationship between the GEMM shape and other relevant parameters, as well as when to employ the `splitK` or `streamK` algorithms.
 
-As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of output C, and then the sub-matrix will be continously divided into multiple tiles of `sg_tile_n` by `sg_tile_m`. These tiles will be assigned to subgroup. Finally, these tile operator will be mapped into the real hardware instructions, such as a `tile_load` and `mma`.
+As shown in the diagram below, each workgroup will calculate a sub-matrix, represented by the blue box in output C. Subsequently, this sub-matrix will be continuously divided into multiple tiles, with dimensions `sg_tile_n` by `sg_tile_m`. These tiles will then be assigned to subgroups. Finally, these tile operations will be mapped to the actual hardware instructions, such as `2d load` and `mma`.
 
 ![ALT](/media/docs/dom.jpg "GEMM decomposition by workgroup and subgroup")
 
@@ -16,17 +16,23 @@ As below diagram shown, each workgroup will calcuate a sub-matrix, blue box of o
 For a runnable code example, you can refer to the code in the [02_basic_gemm](/examples/02_basic_gemm).
 
 ### Task Mapping 
-Before launching the GPU kernel, it should be decided how to map entire GEMM computation into GPU by work-group and sub-group. To efficient utilize the GPU resource, it's improtant to consider factors such as the shape of the operation, data type, and hardware specifications of the GPU. One of typical setting of workgroup and subgroup may be similar as below in case the input shape over workgroup and subgroup size can be sufficent to fill the GPU.
+Before launching the GPU kernel, it is crucial to determine how to map the entire GEMM computation onto the GPU, considering work-group and sub-group configurations. Efficiently utilizing GPU resources requires careful consideration of factors such as the operation's shape, data type, and the hardware specifications of the GPU. A typical configuration for workgroups and subgroups may resemble the example below, especially when the input shape is sufficient to fully utilize the GPU.
+
 ```c++
 constexpr uint32_t wg_tile_m = 256;
 constexpr uint32_t wg_tile_n = 256;
 constexpr uint32_t sg_tile_m = 32;
 constexpr uint32_t sg_tile_n = 64;
 ```
-In this example, the input for GEMM is a matrix with dimensions (4096, 4096), and the output matrix has the same dimensions. With the specified work-group and sub-group sizes, we can map the GEMM operation into (16, 16) work-groups, where each work-group has (8, 4) sub-groups respectively. Each sub-group will be executed by a hardware thread.  However, think about if the input is (32, 1024), the current workgorup and subgroup size will be too large to create enough workgroups so that we need to reset the size of workgroup and subgroup. 
+In this example, the input for the GEMM operation is a matrix with dimensions (4096, 4096), and the output matrix has the same dimensions. With the specified work-group and sub-group sizes, we can organize the GEMM operation into (16, 16) work-groups, each containing (8, 4) sub-groups, with each sub-group being executed by a hardware thread.
+
+However, if we consider a scenario where the input dimensions are (32, 1024), the current workgroup and subgroup sizes would result in work-groups that are too large to create a sufficient number of them. In this case, it becomes necessary to adjust the size of the workgroup and subgroup to achieve efficient computation.
 
 ### SplitK
-It's a very common situation in AI workload where the matrix is a rectangle which means the M and N dimension is smaller but the K dimension is huge. For example, the M，N, K of a workload is (256, 256, 8192) so the ouput shape of C is (256,256). If we still use workgroup shape of (256,256), there is only one workgroup which is far away from enough. Even we use (64,64) workgroup size, there are still only 16 workgroups in GPU. Further decrese the size of workgroup will lead other problems as well, such as the bad memory locality, hard to hide the latency, etc. The exmaple code is demonstrated as below:
+This situation is quite common in AI workloads, where the matrix is rectangular, meaning that the M and N dimensions are relatively small, while the K dimension is . For instance, consider a workload with dimensions (256, 256, 8192), resulting in an output shape of C as (256, 256). If we were to use a workgroup shape of (256, 256), only one workgroup would be created, which is far from sufficient for efficient GPU utilization.
+
+Even if we reduce the workgroup size to (64, 64), we would still have only 16 workgroups on the GPU. Further reducing the workgroup size introduces other challenges, including poor memory locality and difficulty in hiding latency. The example code below demonstrates this mapping alogrithm:
+
 ```c++
 //Workload mapping, linear mapping will be used in the code
 uint32_t group_range_m = (matrix_m + wg_tile_m - 1) / wg_tile_m;
@@ -46,7 +52,11 @@ cl::sycl::nd_range<3> nd_range(group_range * local_range, local_range);
 //Recommended that you use the helper function to caculate nd_range, it is convenient.
 cl::sycl::nd_range<3> get_nd_range(uint32_t matrix_m, uint32_t matrix_n);
 ```
-In this algorithm, the number of workgroup is only decided by workgroup tile size and it will be problematic if the output shape is not big enough. On the other hand, the K is huge so we can split in the K dimension to create more workgroups as well. As the above code the first parameters of `group_range` is only 1. If we split to 4 in K dimension, the total number of workgroup is 4 folds as below picture shown. This method is called `splitK`.  In this picture, the split K happened in workgroup level. It means each workgroup only calculate partical of final GEMM results and finally we have to add them together. As we know there is no explicit sychnozation algorithm between workgroup level and we have to use `atomci_add` to accumulate 4 resutls together, which is shown as `Cross-Workgroup Reduction` in the picture. Meanwhile, since the `atomic-add` only supports float add, the limitaiton of workgroup-level splitK is the output datatype MUST be float rather than float16 or bfloat16.
+In this algorithm, the number of workgroups is primarily determined by the workgroup tile size. However, this can become problematic if the output shape is not sufficiently large. On the other hand, considering the large K dimension, we can split it to create more workgroups. As illustrated in the code snippet above, the first parameter of `group_range` is set to 1. By splitting the K dimension into 4, the total number of workgroups increases fourfold, as shown in the accompanying diagram. This approach is commonly referred to as splitK.
+
+In this diagram, the K splitting occurs at the workgroup level, meaning that each workgroup calculates only a portion of the final GEMM results. Subsequently, these partial results must be accumulated together. Notably, there is no explicit synchronization mechanism between workgroups, necessitating the use of `atomic_add` to perform the accumulation, as indicated by the `Cross-Workgroup Reduction` section in the diagram.
+
+It's important to note that this method has limitations. Since `atomic_add` supports only float addition, the output datatype must be float, rather than float16 or bfloat16.
 
 ![ALT](/media/docs/workgroup_splitK.jpg "split K in workgroup level")
 
@@ -55,6 +65,7 @@ Alternatively, the subgroup-level splitK is also available i which can accumulat
 ![ALT](/media/docs/subgroup_splitK.jpg "split K in subgroup level")
 
 For kernel level API, we can set two parameters in dispatch policy of `gemm_universal` API. Definitely, you can set both value to large than 1 for mixing workgroup and subgroup level split K together. 
+
 ```c++
  using dispatch_policy
             = gpu::xetla::kernel::dispatch_policy_kslicing<num_global_splitk, num_local_splitk, gpu_arch::Xe>;
@@ -67,7 +78,6 @@ In this template, the memory layout, computation engine and work-group/sub-gourp
 decide the location of input and output matrix which is either from global or shared local memory.
 
 ```c++
-// Mirco-kernel configuration
     using gemm_t = typename xetla::group::gemm_selector_t<
             data_type_a, // input datatype for A
             data_type_b, // input datatype for B
