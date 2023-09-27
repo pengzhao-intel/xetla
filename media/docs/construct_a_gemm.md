@@ -2,7 +2,7 @@
 
 In this document, we will demonstrate how to construct a General Matrix Multiply (GEMM) operation using the XeTLA API, both at the kernel and workgroup levels. Additionally, we will explore the relationship between the GEMM shape and other relevant parameters, as well as when to employ the `splitK` or `streamK` algorithms.
 
-As shown in the diagram below, each workgroup will calculate a sub-matrix, represented by the blue box in output C. Subsequently, this sub-matrix will be continuously divided into multiple tiles, with dimensions `sg_tile_n` by `sg_tile_m`. These tiles will then be assigned to subgroups. Finally, these tile operations will be mapped to the actual hardware instructions, such as `2d load` and `mma`.
+As shown in the diagram below, each workgroup will calculate a sub-matrix, represented by the blue box in output C. Subsequently, this sub-matrix will be continuously divided into multiple tiles, with dimensions `sg_tile_n` by `sg_tile_m`. These tiles will then be assigned to subgroups. Finally, these tile operations will be mapped to the actual hardware instructions, such as `load` , `store` and `mma`.
 
 ![ALT](/media/docs/dom.jpg "GEMM decomposition by workgroup and subgroup")
 
@@ -13,7 +13,7 @@ As shown in the diagram below, each workgroup will calculate a sub-matrix, repre
 3. Define `epilogue` that specifies what you want to fuse after the GEMM computation based on accumulator
 4. Instantiate a `gemm` implementation by the selections from 1)-3).
 
-For a runnable code example, you can refer to the code in the [02_basic_gemm](/examples/02_basic_gemm).
+For a runnable code example, you can refer to the code in the [01](/examples/01_basic_gemm) and [02](/examples/02_basic_gemm).
 
 ### Task Mapping 
 Before launching the GPU kernel, it is crucial to determine how to map the entire GEMM computation onto the GPU, considering work-group and sub-group configurations. Efficiently utilizing GPU resources requires careful consideration of factors such as the operation's shape, data type, and the hardware specifications of the GPU. A typical configuration for workgroups and subgroups may resemble the example below, especially when the input shape is sufficient to fully utilize the GPU.
